@@ -43,3 +43,12 @@ def follow_user(target_username):
     
     # HTTP 204 No Content means the follow was successful
     return response.status_code == 204
+# Add this below your existing follow_user function
+
+def unfollow_user(target_username):
+    """Sends a DELETE request to unfollow a target user."""
+    url = f"https://api.github.com/user/following/{target_username}"
+    response = requests.delete(url, headers=HEADERS)
+    
+    # HTTP 204 No Content means the unfollow was successful
+    return response.status_code == 204
