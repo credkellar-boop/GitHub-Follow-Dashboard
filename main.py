@@ -5,10 +5,9 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Import our custom modular components
-from core import get_all_paginated_users, follow_user, broadcast_alert
+# Import our custom modular components (now including unfollow_user)
+from core import get_all_paginated_users, follow_user, unfollow_user, broadcast_alert
 
-# Load environment variables
 load_dotenv()
 
 USERNAME = os.getenv("GITHUB_USERNAME")
@@ -28,10 +27,9 @@ def load_json_list(filepath):
 def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting GitHub-Follow-Dashboard Sync...")
     
-    # Ensure data directory exists
     os.makedirs("data", exist_ok=True)
     
-    # 1. Fetch live data using our core API module
+    # 1. Fetch live data
     current_followers = get_all_paginated_users(f"https://api.github.com/users/{USERNAME}/followers")
     current_following = get_all_paginated_users(f"https://api.github.com/users/{USERNAME}/following")
     
@@ -39,38 +37,54 @@ def main():
     previous_followers = load_json_list(STATE_FILE)
     blacklist = load_json_list(BLACKLIST_FILE)
     
-    # 3. Diff tracking: Identify new audience members
+    # 3. Diff tracking: Identify new audience members AND unfollowers
     new_followers = current_followers - previous_followers
     
-    if not new_followers:
-        print("No new followers detected. Dashboard up to date.")
-    else:
-        for follower in new_followers:
-            # Check blacklist safety guardrail
-            if follower in blacklist:
-                print(f"Ignored {follower} (on blacklist).")
-                broadcast_alert(follower, "Ignored (Blacklisted) 🚫")
-                continue
-                
-            # If they follow you but you don't follow them, evaluate follow-back
-            if follower not in current_following:
-                print(f"Attempting to follow back: {follower}...")
-                success = follow_user(follower)
-                
-                if success:
-                    print(f"Successfully followed back {follower}.")
-                    broadcast_alert(follower, "Followed Back ✅")
-                else:
-                    print(f"Failed to follow {follower}.")
-                    broadcast_alert(follower, "Failed to Follow ❌")
-                
-                # Randomized throttling sleep to mimic human interaction pattern
-                delay = random.randint(15, 45)
-                print(f"Sleeping for {delay}s...")
-                time.sleep(delay)
+    # If previous_followers is empty (first run), don't mass-unfollow everyone
+    unfollowers = previous_followers - current_followers if previous_followers else set()
+    
+    if not new_followers and not unfollowers:
+        print("No changes detected. Dashboard up to date.")
+    
+    # --- HANDLE NEW FOLLOWERS ---
+    for follower in new_followers:
+        if follower in blacklist:
+            print(f"Ignored {follower} (on blacklist).")
+            broadcast_alert(follower, "Ignored (Blacklisted) 🚫")
+            continue
+            
+        if follower not in current_following:
+            print(f"Attempting to follow back: {follower}...")
+            success = follow_user(follower)
+            
+            if success:
+                print(f"Successfully followed back {follower}.")
+                broadcast_alert(follower, "Followed Back ✅")
             else:
-                # You already follow them, just broadcast the alert
-                broadcast_alert(follower, "Already Following 🤝")
+                print(f"Failed to follow {follower}.")
+                broadcast_alert(follower, "Failed to Follow ❌")
+            
+            delay = random.randint(15, 45)
+            time.sleep(delay)
+        else:
+            broadcast_alert(follower, "Already Following 🤝")
+
+    # --- HANDLE UNFOLLOWERS ---
+    for unfollower in unfollowers:
+        if unfollower in current_following:
+            print(f"User {unfollower} unfollowed. Attempting to auto-unfollow...")
+            success = unfollow_user(unfollower)
+            
+            if success:
+                print(f"Successfully unfollowed {unfollower}.")
+                broadcast_alert(unfollower, "Auto-Unfollowed 💔")
+            else:
+                print(f"Failed to unfollow {unfollower}.")
+                broadcast_alert(unfollower, "Failed to Unfollow ⚠️")
+            
+            # Throttling to protect the API token
+            delay = random.randint(15, 45)
+            time.sleep(delay)
                 
     # 4. Save state for next cron iteration
     with open(STATE_FILE, "w") as f:
