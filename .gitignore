@@ -216,3 +216,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Environments
+.env
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Project State & Data
+# We ignore the state files so local runs don't overwrite server state
+data/followers.json
+
+# IDEs
+.vscode/
+.idea/
